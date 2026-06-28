@@ -1,51 +1,24 @@
 import os
-import sys
 import pickle
 import numpy as np
 from flask import Flask, request, render_template_string
 
-# --- THE ULTIMATE UNPICKLE PATCH ---
-# This class acts as an internal translator for pickle. 
-# When it encounters old module references inside your file, it instantly points them to the 1.9.0 paths.
-class SafeUnpickler(pickle.Unpickler):
-    def find_class(self, module, name):
-        # Redirect old gradient boosting modules to their updated modern homes
-        if module == "sklearn.ensemble._gb":
-            module = "sklearn.ensemble"
-        elif module == "sklearn.ensemble._gb_losses" or module == "_loss":
-            module = "sklearn.utils._loss"
-            
-        # Fallback patch for numpy 2.5+ compatibility with models trained on numpy 1.x
-        if module == "numpy._core.multiarray" or module == "numpy.core.multiarray":
-            try:
-                import numpy._core.multiarray as ma
-                return getattr(ma, name)
-            except ImportError:
-                import numpy.core.multiarray as ma
-                return getattr(ma, name)
-                
-        return super().find_class(module, name)
-
 app = Flask(__name__)
 
-# Exact file name match for your uploaded file
+# Exact file name match for your uploaded bank loan model
 MODEL_FILENAME = 'gradient_pkl (1).pkl'
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MODEL_FILENAME)
 
-model = None
-load_error_message = None
-
+# Load the model normally - it will match perfectly now
 try:
-    if not os.path.exists(MODEL_PATH):
-        load_error_message = f"Model missing. Please drop the file into: '{MODEL_PATH}'."
-    else:
-        # Instead of standard pickle.load(), we use our custom translator class
-        with open(MODEL_PATH, 'rb') as f:
-            model = SafeUnpickler(f).load()
-        print("Model integrated smoothly with server system memory.")
+    with open(MODEL_PATH, 'rb') as f:
+        model = pickle.load(f)
+    print(f"Successfully loaded model from: {MODEL_PATH}")
+    load_error_message = None
 except Exception as e:
     import traceback
-    load_error_message = f"Error reading file structures: {str(e)}\n\nTraceback details:\n{traceback.format_exc()}"
+    load_error_message = f"Error: {str(e)}\n{traceback.format_exc()}"
+    model = None
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -66,7 +39,6 @@ HTML_TEMPLATE = """
             --danger: #ef4444;
             --warning: #f59e0b;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
         body { background: var(--bg-gradient); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 40px 20px; color: var(--text-dark); }
         .container { background: var(--card-bg); width: 100%; max-width: 850px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; }
@@ -99,7 +71,7 @@ HTML_TEMPLATE = """
 
     {% if init_error %}
     <div class="result-container warning" style="margin: 20px 40px 0 40px; text-align: left;">
-        <strong>System Initialization Warning:</strong><br>{{ init_error }}
+        <strong>Initialization System Error:</strong><br>{{ init_error }}
     </div>
     {% endif %}
 
@@ -266,7 +238,7 @@ def index():
                     prediction_text = "Approval Authorized! Applicant meets clean underwriting requirements."
                     prediction_class = "success"
             else:
-                prediction_text = "Cannot evaluate data. System engine uninitialized due to library versions conflict."
+                prediction_text = "Application Error: Model file could not be parsed or found on backend server."
                 prediction_class = "warning"
 
         except Exception as e:
