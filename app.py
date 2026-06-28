@@ -5,14 +5,11 @@ import numpy as np
 from flask import Flask, request, render_template_string
 
 # --- FIXED ADAPTIVE UNPICKLE PATCH ---
-# Safely intercepts and translates scikit-learn internal structures across version updates
 class SafeUnpickler(pickle.Unpickler):
     def find_class(self, module, name):
-        # Redirect old general loss module namespaces
         if module in ["sklearn.ensemble._gb_losses", "sklearn.utils._loss", "_loss", "sklearn.ensemble._loss"]:
             module = "sklearn._loss"
             
-        # Fix for modern scikit-learn (e.g., 1.6+), where CyHalfBinomialLoss is nested internally
         if name == "CyHalfBinomialLoss":
             try:
                 import sklearn._loss._loss
@@ -23,7 +20,6 @@ class SafeUnpickler(pickle.Unpickler):
         if module == "sklearn.ensemble._gb":
             module = "sklearn.ensemble"
             
-        # Ensure NumPy 1.x / 2.x cross-compatibility for structured array arrays
         if module in ["numpy._core.multiarray", "numpy.core.multiarray"]:
             try:
                 import numpy._core.multiarray as ma
@@ -36,7 +32,6 @@ class SafeUnpickler(pickle.Unpickler):
 
 app = Flask(__name__)
 
-# Model path resolution
 MODEL_FILENAME = 'gradient_pkl (1).pkl'
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MODEL_FILENAME)
 
@@ -47,7 +42,6 @@ try:
     if not os.path.exists(MODEL_PATH):
         load_error_message = f"Model missing. Please drop the file into: '{MODEL_PATH}'."
     else:
-        # Reconstitute the model file using our updated custom translator object
         with open(MODEL_PATH, 'rb') as f:
             model = SafeUnpickler(f).load()
         print("Model integrated cleanly into virtual system environment memory.")
@@ -61,53 +55,75 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bank Credit Processing System</title>
+    <title>Bank Credit Underwriting System</title>
     <style>
         :root {
             --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             --card-bg: #ffffff;
-            --primary-color: #2563eb;
+            --primary-color: #1e40af;
             --primary-hover: #1d4ed8;
             --text-dark: #1e293b;
             --border-color: #e2e8f0;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
+            --success-bg: #d1fae5;
+            --success-text: #065f46;
+            --success-border: #a7f3d0;
+            --danger-bg: #fee2e2;
+            --danger-text: #991b1b;
+            --danger-border: #fecaca;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
         body { background: var(--bg-gradient); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 40px 20px; color: var(--text-dark); }
         .container { background: var(--card-bg); width: 100%; max-width: 850px; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; }
-        .header { background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%); color: #ffffff; padding: 30px; text-align: center; }
-        .header h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-        .header p { font-size: 14px; opacity: 0.9; }
+        .header { background: linear-gradient(135deg, #111827 0%, #1e40af 100%); color: #ffffff; padding: 35px; text-align: center; border-bottom: 4px solid #3b82f6; }
+        .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .header p { font-size: 14px; opacity: 0.85; }
+        
+        /* New Professional Result UI */
+        .status-box { margin: 30px 40px 10px 40px; padding: 25px; border-radius: 12px; border: 1px solid; text-align: center; }
+        .status-box.APPROVED { background-color: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+        .status-box.NOT_APPROVED { background-color: var(--danger-bg); color: var(--danger-text); border-color: var(--danger-border); }
+        .status-title { font-size: 28px; font-weight: 800; letter-spacing: 2px; margin-bottom: 5px; text-transform: uppercase; }
+        .status-desc { font-size: 15px; font-weight: 500; opacity: 0.9; }
+        
         form { padding: 40px; }
-        .form-section-title { font-size: 16px; font-weight: 600; color: var(--primary-color); margin-bottom: 16px; border-bottom: 2px solid var(--border-color); padding-bottom: 6px; grid-column: span 2; }
+        .form-section-title { font-size: 16px; font-weight: 600; color: #2563eb; margin-bottom: 16px; border-bottom: 2px solid var(--border-color); padding-bottom: 6px; grid-column: span 2; }
         .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
         @media (max-width: 650px) { .grid-container { grid-template-columns: 1fr; } .form-section-title { grid-column: span 1; } }
         .form-group { display: flex; flex-direction: column; }
         .form-group label { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #475569; }
-        .form-group input, .form-group select { padding: 10px 14px; font-size: 14px; border: 1px solid var(--border-color); border-radius: 8px; outline: none; background-color: #f8fafc; }
-        .form-group input:focus, .form-group select:focus { border-color: var(--primary-color); background-color: #ffffff; box-shadow: 0 0 0 3px rgba(37, 99, 211, 0.15); }
-        .submit-btn { background: var(--primary-color); color: white; border: none; padding: 14px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; width: 100%; box-shadow: 0 4px 6px -1px rgba(37, 99, 211, 0.2); }
+        .form-group input, .form-group select { padding: 12px 14px; font-size: 14px; border: 1px solid var(--border-color); border-radius: 8px; outline: none; background-color: #f8fafc; transition: all 0.2s; }
+        .form-group input:focus, .form-group select:focus { border-color: #2563eb; background-color: #ffffff; box-shadow: 0 0 0 3px rgba(37, 99, 211, 0.15); }
+        .submit-btn { background: #2563eb; color: white; border: none; padding: 16px; font-size: 16px; font-weight: 700; border-radius: 8px; cursor: pointer; width: 100%; box-shadow: 0 4px 6px -1px rgba(37, 99, 211, 0.2); transition: background 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
         .submit-btn:hover { background: var(--primary-hover); }
-        .result-container { margin-top: 24px; padding: 16px; border-radius: 8px; text-align: center; font-weight: 600; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-        .result-container.success { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
-        .result-container.danger { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-        .result-container.warning { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        
+        .error-banner { background-color: #fff9db; color: #92400e; border: 1px solid #ffe3e3; padding: 15px; margin: 20px 40px 0 40px; border-radius: 8px; font-size: 14px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="header">
-        <h1>Credit Line Assessment & Risk Predictor</h1>
-        <p>Supply profile parameters to automatically screen risk arrays via Gradient Boost evaluations.</p>
+        <h1>Retail Credit Decisioning Portal</h1>
+        <p>Automated Automated Scoring Engine & Loan Risk Assessment Matrix</p>
     </div>
 
     {% if init_error %}
-    <div class="result-container warning" style="margin: 20px 40px 0 40px; text-align: left;">
-        <strong>System Initialization Check:</strong><br><pre>{{ init_error }}</pre>
+    <div class="error-banner">
+        <strong>System Initialization Warning:</strong> {{ init_error }}
     </div>
+    {% endif %}
+
+    {% if decision_status %}
+        <div class="status-box {{ decision_status }}">
+            <div class="status-title">
+                {% if decision_status == 'APPROVED' %}
+                    ✓ LOAN APPROVED
+                {% else %}
+                    ✕ LOAN NOT APPROVED
+                {% endif %}
+            </div>
+            <div class="status-desc">{{ decision_message }}</div>
+        </div>
     {% endif %}
 
     <form action="/" method="POST">
@@ -131,11 +147,7 @@ HTML_TEMPLATE = """
             <div class="form-group"><label for="loan_intent">Financing Target Domain</label><select id="loan_intent" name="loan_intent" required><option value="PERSONAL">Personal Restructuring</option><option value="EDUCATION">Educational Tuition</option><option value="MEDICAL">Medical Accounts</option><option value="HOMEIMPROVEMENT">Residential Renovation</option><option value="VENTURE">Commercial Venture</option></select></div>
         </div>
 
-        <button type="submit" class="submit-btn">Run Engine Check</button>
-
-        {% if prediction_text %}
-        <div class="result-container {{ prediction_class }}">{{ prediction_text }}</div>
-        {% endif %}
+        <button type="submit" class="submit-btn">Evaluate Application</button>
     </form>
 </div>
 
@@ -145,8 +157,9 @@ HTML_TEMPLATE = """
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    prediction_text = None
-    prediction_class = None
+    decision_status = None
+    decision_message = None
+    
     if request.method == 'POST':
         try:
             age = float(request.form.get('person_age', 0))
@@ -191,20 +204,22 @@ def index():
 
             if model is not None:
                 prediction = model.predict(features)[0]
+                # prediction == 1 means Default Risk (Reject)
+                # prediction == 0 means Safe (Approve)
                 if prediction == 1:
-                    prediction_text = "Risk Analysis Notice: High Probability of Default Risk Flagged."
-                    prediction_class = "danger"
+                    decision_status = "NOT_APPROVED"
+                    decision_message = "Applicant fails to meet standard credit risk criteria. Risk profile indicates a high probability of default."
                 else:
-                    prediction_text = "Approval Authorized! Applicant meets clean underwriting requirements."
-                    prediction_class = "success"
+                    decision_status = "APPROVED"
+                    decision_message = "Applicant meets underwriting requirements. Credit risk profile cleared for deployment."
             else:
-                prediction_text = "Evaluation module uninitialized."
-                prediction_class = "warning"
+                decision_status = "NOT_APPROVED"
+                decision_message = "System error: Backend AI scoring core is offline."
         except Exception as e:
-            prediction_text = f"Processing Error: {str(e)}"
-            prediction_class = "warning"
+            decision_status = "NOT_APPROVED"
+            decision_message = f"Processing Error: Could not evaluate application attributes. ({str(e)})"
 
-    return render_template_string(HTML_TEMPLATE, init_error=load_error_message, prediction_text=prediction_text, prediction_class=prediction_class)
+    return render_template_string(HTML_TEMPLATE, init_error=load_error_message, decision_status=decision_status, decision_message=decision_message)
 
 if __name__ == '__main__':
     app.run(debug=True)
