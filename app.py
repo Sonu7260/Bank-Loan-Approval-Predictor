@@ -1,5 +1,6 @@
 import os
 import pickle
+import traceback
 import numpy as np
 from flask import Flask, request, render_template_string
 
@@ -7,16 +8,23 @@ app = Flask(__name__)
 
 # Exact file name match for your uploaded bank loan model
 MODEL_FILENAME = 'gradient_pkl (1).pkl'
-MODEL_PATH = os.path.join(os.path.dirname(__file__), MODEL_FILENAME)
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MODEL_FILENAME)
 
-# Load the GradientBoostingClassifier model securely
+model = None
+load_error_message = None
+
+# Enhanced load tracking with diagnostic read tests
 try:
-    with open(MODEL_PATH, 'rb') as f:
-        model = pickle.load(f)
-    print(f"Successfully loaded model from: {MODEL_PATH}")
+    if not os.path.exists(MODEL_PATH):
+        load_error_message = f"File not found. Looking in: '{MODEL_PATH}'. Please ensure the file is in this exact folder."
+    else:
+        with open(MODEL_PATH, 'rb') as f:
+            model = pickle.load(f)
+        print(f"Successfully loaded model from: {MODEL_PATH}")
 except Exception as e:
-    print(f"Error loading model layout at {MODEL_PATH}: {e}")
-    model = None
+    # Captures missing dependencies or architecture/scikit-learn version disparities
+    load_error_message = f"Error reading pickle file: {str(e)}. (Path: {MODEL_PATH}). Traceback: {traceback.format_exc()}"
+    print(load_error_message)
 
 # Single-file HTML interface with embedded CSS styling
 HTML_TEMPLATE = """
@@ -163,7 +171,9 @@ HTML_TEMPLATE = """
             border-radius: 8px;
             text-align: center;
             font-weight: 600;
-            font-size: 16px;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
 
         .result-container.success {
@@ -192,6 +202,12 @@ HTML_TEMPLATE = """
         <h1>Credit Line Assessment & Risk Predictor</h1>
         <p>Supply profile parameters to automatically screen risk arrays via Gradient Boost evaluations.</p>
     </div>
+
+    {% if init_error %}
+    <div class="result-container warning" style="margin: 20px 40px 0 40px; text-align: left;">
+        <strong>Initialization System Error:</strong><br>{{ init_error }}
+    </div>
+    {% endif %}
 
     <form action="/" method="POST">
         <div class="grid-container">
@@ -305,7 +321,7 @@ def index():
     
     if request.method == 'POST':
         try:
-            # 1. Gather raw and numeric interface parameters
+            # 1. Gather raw parameters
             age = float(request.form.get('person_age', 0))
             income = float(request.form.get('person_income', 0))
             emp_exp = float(request.form.get('person_emp_exp', 0))
@@ -314,17 +330,15 @@ def index():
             cred_hist = float(request.form.get('cb_person_cred_hist_length', 0))
             credit_score = float(request.form.get('credit_score', 0))
             
-            # Formulate the derived feature logic
             pct_income = (loan_amnt / income) if income > 0 else 0.0
 
-            # 2. Extract choice strings for structural encoding logic
             gender = request.form.get('gender')
             education = request.form.get('education')
             home = request.form.get('home_ownership')
             intent = request.form.get('loan_intent')
             default = request.form.get('previous_default')
 
-            # 3. Explicit UI Mapping to feature arrays
+            # 2. Structural One-Hot Encoder Maps
             gender_male = 1 if gender == 'Male' else 0
             
             edu_bachelor = 1 if education == 'Bachelor' else 0
@@ -344,7 +358,7 @@ def index():
             
             default_yes = 1 if default == 'Yes' else 0
 
-            # 4. Construct feature matrix strictly matching the 22 expected inputs
+            # 3. Form array payload matching structure requirements
             features = np.array([[
                 age, income, emp_exp, loan_amnt, int_rate, pct_income, cred_hist, credit_score,
                 gender_male, edu_bachelor, edu_doctorate, edu_high_school, edu_master,
@@ -362,14 +376,14 @@ def index():
                     prediction_text = "Approval Authorized! Applicant meets clean underwriting requirements."
                     prediction_class = "success"
             else:
-                prediction_text = "Application Error: Model file could not be parsed or found on backend server."
+                prediction_text = f"Application Error: Model pipeline is inactive.\nDetails: {load_error_message}"
                 prediction_class = "warning"
 
         except Exception as e:
-            prediction_text = f"Processing Error: Missing or invalid entries ({str(e)})."
+            prediction_text = f"Processing Error: Entry parse failed ({str(e)}).\n{traceback.format_exc()}"
             prediction_class = "warning"
 
-    return render_template_string(HTML_TEMPLATE, prediction_text=prediction_text, prediction_class=prediction_class)
+    return render_template_string(HTML_TEMPLATE, init_error=load_error_message, prediction_text=prediction_text, prediction_class=prediction_class)
 
 if __name__ == '__main__':
     app.run(debug=True)
