@@ -4,34 +4,26 @@ import pickle
 import numpy as np
 from flask import Flask, request, render_template_string
 
-# --- THE ABSOLUTE ADAPTIVE UNPICKLE PATCH ---
-# Automatically routes old pickle file module layout tracking to modern paths
-def get_valid_loss_module():
-    try:
-        import sklearn.utils._loss
-        return "sklearn.utils._loss"
-    except ImportError:
-        pass
-    try:
-        import sklearn.ensemble._gb_losses
-        return "sklearn.ensemble._gb_losses"
-    except ImportError:
-        pass
-    try:
-        import sklearn._loss
-        return "sklearn._loss"
-    except ImportError:
-        pass
-    return "sklearn.ensemble"
-
-TARGET_LOSS_MODULE = get_valid_loss_module()
-
+# --- FIXED ADAPTIVE UNPICKLE PATCH ---
+# Safely intercepts and translates scikit-learn internal structures across version updates
 class SafeUnpickler(pickle.Unpickler):
     def find_class(self, module, name):
+        # Redirect old general loss module namespaces
         if module in ["sklearn.ensemble._gb_losses", "sklearn.utils._loss", "_loss", "sklearn.ensemble._loss"]:
-            module = TARGET_LOSS_MODULE
+            module = "sklearn._loss"
+            
+        # Fix for modern scikit-learn (e.g., 1.6+), where CyHalfBinomialLoss is nested internally
+        if name == "CyHalfBinomialLoss":
+            try:
+                import sklearn._loss._loss
+                return getattr(sklearn._loss._loss, name)
+            except (ImportError, AttributeError):
+                pass
+
         if module == "sklearn.ensemble._gb":
             module = "sklearn.ensemble"
+            
+        # Ensure NumPy 1.x / 2.x cross-compatibility for structured array arrays
         if module in ["numpy._core.multiarray", "numpy.core.multiarray"]:
             try:
                 import numpy._core.multiarray as ma
@@ -39,11 +31,12 @@ class SafeUnpickler(pickle.Unpickler):
             except ImportError:
                 import numpy.core.multiarray as ma
                 return getattr(ma, name)
+                
         return super().find_class(module, name)
 
 app = Flask(__name__)
 
-# Model placement tracking
+# Model path resolution
 MODEL_FILENAME = 'gradient_pkl (1).pkl'
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), MODEL_FILENAME)
 
@@ -52,14 +45,15 @@ load_error_message = None
 
 try:
     if not os.path.exists(MODEL_PATH):
-        load_error_message = f"Model missing. Please place it at: '{MODEL_PATH}'."
+        load_error_message = f"Model missing. Please drop the file into: '{MODEL_PATH}'."
     else:
+        # Reconstitute the model file using our updated custom translator object
         with open(MODEL_PATH, 'rb') as f:
             model = SafeUnpickler(f).load()
-        print("Model integrated cleanly into memory.")
+        print("Model integrated cleanly into virtual system environment memory.")
 except Exception as e:
     import traceback
-    load_error_message = f"Initialization Error: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+    load_error_message = f"System Initialization Error: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -112,7 +106,7 @@ HTML_TEMPLATE = """
 
     {% if init_error %}
     <div class="result-container warning" style="margin: 20px 40px 0 40px; text-align: left;">
-        <strong>System Initialization Check:</strong><br>{{ init_error }}
+        <strong>System Initialization Check:</strong><br><pre>{{ init_error }}</pre>
     </div>
     {% endif %}
 
@@ -212,6 +206,5 @@ def index():
 
     return render_template_string(HTML_TEMPLATE, init_error=load_error_message, prediction_text=prediction_text, prediction_class=prediction_class)
 
-# Vercel reads this object layout directly
 if __name__ == '__main__':
     app.run(debug=True)
